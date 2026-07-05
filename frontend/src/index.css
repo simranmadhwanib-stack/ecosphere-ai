@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+  --color-eco-50: #eefdf4;
+  --color-eco-100: #dafbea;
+  --color-eco-200: #b8f4d4;
+  --color-eco-300: #83eab2;
+  --color-eco-400: #48d689;
+  --color-eco-500: #22bd6c;
+  --color-eco-600: #169954;
+  --color-eco-700: #137944;
+  --color-eco-800: #135f38;
+  --color-eco-900: #114f30;
+  --color-eco-950: #052c19;
+
+  --color-cyber-dark: #030712;
+  --color-cyber-card: rgba(17, 24, 39, 0.7);
+  --color-cyber-border: rgba(255, 255, 255, 0.08);
+  --color-cyber-glow: rgba(34, 189, 108, 0.15);
+  --color-cyber-neonGreen: #22bd6c;
+  --color-cyber-neonBlue: #3b82f6;
+  --color-cyber-neonOrange: #f97316;
+  --color-cyber-neonCyan: #06b6d4;
+
+  --font-sans: 'Outfit', 'Inter', sans-serif;
+
+  --shadow-glass-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --shadow-neon-green: 0 0 15px rgba(34, 189, 108, 0.4);
+  --shadow-neon-blue: 0 0 15px rgba(59, 82, 246, 0.4);
+  --shadow-neon-orange: 0 0 15px rgba(249, 115, 22, 0.4);
+  --shadow-neon-cyan: 0 0 15px rgba(6, 182, 212, 0.4);
+
+  --animate-pulse-slow: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scan: scanLine 8s linear infinite;
+  --animate-radar: radarWave 3s ease-out infinite;
+
+  @keyframes scanLine {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+  }
+  @keyframes radarWave {
+    0% { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-cyber-dark text-slate-100 antialiased overflow-x-hidden min-h-screen font-sans;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(34, 189, 108, 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(59, 82, 246, 0.08) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(6, 182, 212, 0.04) 0px, transparent 50%);
+  }
+}
+
+/* Glassmorphism Panel base */
+.glass-panel {
+  @apply bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-glass-glow transition-all duration-300;
+}
+
+.glass-panel:hover {
+  @apply border-white/20 bg-slate-900/70;
+}
+
+/* Glow Borders */
+.glow-border-green {
+  @apply border-eco-500/20 hover:border-eco-500/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_0_10px_rgba(34,189,108,0.1)];
+}
+
+.glow-border-blue {
+  @apply border-blue-500/20 hover:border-blue-500/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_0_10px_rgba(59,82,246,0.1)];
+}
+
+.glow-border-orange {
+  @apply border-orange-500/20 hover:border-orange-500/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_0_10px_rgba(249,115,22,0.1)];
+}
+
+.glow-border-cyan {
+  @apply border-cyan-500/20 hover:border-cyan-500/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_0_10px_rgba(6,182,212,0.1)];
+}
+
+/* Scanline Animation overlay */
+.cyber-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(to bottom, rgba(34, 189, 108, 0.2), transparent);
+  pointer-events: none;
+  animation: scanLine 8s linear infinite;
+}
+
+/* Custom Scrollbar for Sci-Fi console scroll lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(17, 24, 39, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(34, 189, 108, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 189, 108, 0.6);
+}
+
+/* Telemetry scan dots */
+.telemetry-dot {
+  position: relative;
+}
+
+.telemetry-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  animation: radarWave 2s ease-out infinite;
+  pointer-events: none;
+}
