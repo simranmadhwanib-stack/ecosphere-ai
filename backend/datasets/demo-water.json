@@ -1,0 +1,7 @@
+[
+  {"house_id":"H-1001","locality":"Central","daily_usage":142,"monthly_usage":4280,"leak_detected":false,"pressure":72,"rainfall":16,"conservation_score":81},
+  {"house_id":"H-1002","locality":"North","daily_usage":138,"monthly_usage":4140,"leak_detected":false,"pressure":74,"rainfall":18,"conservation_score":84},
+  {"house_id":"H-1003","locality":"South","daily_usage":166,"monthly_usage":4980,"leak_detected":true,"pressure":59,"rainfall":11,"conservation_score":62},
+  {"house_id":"H-1004","locality":"East","daily_usage":155,"monthly_usage":4650,"leak_detected":false,"pressure":71,"rainfall":15,"conservation_score":79},
+  {"house_id":"H-1005","locality":"West","daily_usage":148,"monthly_usage":4440,"leak_detected":false,"pressure":70,"rainfall":14,"conservation_score":78}
+]

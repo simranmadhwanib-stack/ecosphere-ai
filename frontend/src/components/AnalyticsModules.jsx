@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Zap, Droplet, Wind, Trash2, ShieldAlert, Award, FileText, CheckCircle, Activity } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar } from 'recharts';
 
-export default function AnalyticsModules({ apiBase }) {
+export default function AnalyticsModules({ apiBase, activeLocationName }) {
   const [activeTab, setActiveTab] = useState('electricity');
   const [history, setHistory] = useState([]);
   const [sectors, setSectors] = useState([]);
@@ -19,7 +19,7 @@ export default function AnalyticsModules({ apiBase }) {
       }
     };
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, activeLocationName]);
 
   return (
     <div className="space-y-6">

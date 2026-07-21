@@ -97,4 +97,5 @@ npm run build
 ## Notes
 
 - The current app uses real browser geolocation when available and falls back to manual location search if permission is denied.
+- Browser geolocation requires `https://` in production. During local development, use `http://localhost:5173`; opening the Vite server using a LAN IP over plain HTTP prevents the browser from sharing precise location. The app will then use an approximate network-location fallback or let you search for a city.
 - The backend currently serves demo-style city telemetry and can be connected to real data sources later.

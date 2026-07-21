@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,6 +14,86 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+// ----------------------------------------------------
+// SQLite persistence layer for enterprise demo datasets
+// ----------------------------------------------------
+const dbDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new Database(path.join(dbDir, 'ecosphere.sqlite'));
+db.pragma('journal_mode = WAL');
+
+const createDatabaseSchema = () => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dataset_catalog (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dataset_name TEXT UNIQUE NOT NULL,
+      record_count INTEGER NOT NULL,
+      summary TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS report_exports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
+const buildReportContent = (reportType, kpis = {}) => {
+  const dateStr = new Date().toLocaleDateString();
+  if (reportType === 'energy') {
+    return `# ⚡ EcoSphere AI - Smart Grid Energy Report\n**Grid Compliance:** IEEE-SmartGrid-v2 | **Telemetry Hops:** 5 IoT Segments\n**Report Date:** ${dateStr} | **Grid Status:** STABLE SUPPLY\n\n## 1. Smart Grid Assessment\nTotal municipal energy demand stands at **${kpis.totalEnergyUsageKwh?.toLocaleString() || '6,420'} kWh**. Solar installations currently generate **${kpis.solarGenerationKwh || 700} kWh**, accounting for **${Math.round(((kpis.solarGenerationKwh || 700) / (kpis.totalEnergyUsageKwh || 6420)) * 100) || 10}%** of grid inputs.\n\n## 2. Grid Peak Demand Factors\n*   **Industrial Sector:** Absorbs 65.2% of peak grid loads.\n*   **Datacenter Corridor:** High-density baseline draw registered.\n*   **Ambient Weather Correlates:** Air conditioning loads increase by 4.2% per 1°C ambient temperature rise above 28°C.\n\n## 3. Operational Priorities\n1. Extend peak shifters to high-demand local zones.\n2. Incorporate wind energy feed-ins.`;
+  }
+
+  if (reportType === 'carbon') {
+    return `# 🌳 EcoSphere AI - Carbon Footprint Audit\n**Greenhouse Ledger:** GHG-Protocol-Scope-2 | **Audit Status:** APPROVED\n**Report Date:** ${dateStr} | **Net Daily Offset:** -${kpis.carbonOffsetKg || 1240} kg\n\n## 1. Greenhouse Gas Ingestion\nEcoSphere City carbon emissions total **${kpis.totalCarbonKg?.toLocaleString() || '3,500'} kg CO2**. This is offset by **${kpis.carbonOffsetKg?.toLocaleString() || '1,240'} kg** of offset vectors, primarily driven by **${((kpis.totalTreeCoverSqm || 385000) / 10000).toFixed(1)} hectares** of urban forestation.\n\n## 2. Carbon Vectors\n*   **Industrial Emissions:** 68% of emissions.\n*   **Vehicle Transportation:** 22% of emissions.\n*   **Carbon Sinks (Parks):** Absorb 220g CO2 per square meter annually.\n\n## 3. Decarbonization Action Plan\n1. Transition city fleet logistics to Electric Vehicles.\n2. Expand green reserve borders to absorb highway exhaust plumes.`;
+  }
+
+  return `# 🌍 EcoSphere AI - Municipal ESG Audit\n**Compliance Registry:** UN-SDG-11-13 | **Security Certificate:** SHA-256 Ledger Verified\n**Report Date:** ${dateStr} | **Global Assessment:** CLASS-A ECO BALANCE\n\n## 1. Executive ESG Summary\nEcoSphere City's integrated municipal smart systems report a **Sustainability Index of ${kpis.sustainabilityScore || 78}%**. Atmospheric particulates (AQI) average **${kpis.averageAQI || 64}**, maintaining stable air quality conditions. Greenhouse gas emissions have been minimized via microgrids and urban tree covers.\n\n## 2. Key Metrics & Targets\n*   **Net Carbon Footprint:** ${kpis.totalCarbonKg?.toLocaleString() || '3,500'} kg CO2/day\n*   **Annualized Carbon Offset:** ${kpis.carbonOffsetKg?.toLocaleString() || '1,240'} kg CO2\n*   **Rooftop Solar Absorption:** ${kpis.solarGenerationKwh || 700} kWh\n*   **Water Distribution Efficiency:** ${kpis.activeAlerts > 0 ? '94.2%' : '100%'}\n\n## 3. Recommended Policy Interventions\n1. Urban Forestry Expansion: Expand the highest-AQI zone tree canopy by 20,000 sqm to absorb sulfur-particulate outputs.\n2. Solar Grid Subsidization: Deploy photovoltaic incentives for residential rooftops to target a 20% solar mix ratio.\n3. Pressure Loop Repairs: Seal local flow pressure deviations to protect drinking water reserves.`;
+};
+
+const seedCatalog = () => {
+  const rows = [
+    ['electricity_usage', 10000, 'Synthetic smart-meter telemetry for city electricity demand'],
+    ['water_consumption', 10000, 'Residential and civic water demand profiles'],
+    ['air_quality', 10000, 'Pollution and weather observations'],
+    ['tree_plantation', 10000, 'Canopy survival and carbon capture records'],
+    ['waste_management', 10000, 'Waste collection and bin fill status'],
+    ['renewable_energy', 10000, 'Solar and wind generation telemetry'],
+    ['carbon_emissions', 10000, 'Sector emissions and reduction targets'],
+    ['citizen_reports', 10000, 'Citizen complaints and officer assignments']
+  ];
+
+  const insertCatalog = db.prepare('INSERT OR IGNORE INTO dataset_catalog (dataset_name, record_count, summary) VALUES (?, ?, ?)');
+  db.transaction(() => {
+    rows.forEach((row) => insertCatalog.run(row[0], row[1], row[2]));
+  })();
+};
+
+const loadDatasetPreview = (datasetName) => {
+  const filePath = path.join(__dirname, 'datasets', `${datasetName}.json`);
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+createDatabaseSchema();
+seedCatalog();
 
 // ----------------------------------------------------
 // 1. DATASET SETUP & LOCATION-DRIVEN GEOGRAPHIC MODEL
@@ -28,13 +109,15 @@ const createZonesForLocation = (name = 'Selected Location') => {
   ];
 };
 
-const buildLocationProfile = ({ name, latitude, longitude, country = '', admin1 = '' }) => {
+const buildLocationProfile = ({ name, latitude, longitude, country = '', admin1 = '', weather = null }) => {
   const latNum = Number(latitude);
   const lonNum = Number(longitude);
   const displayName = [name, admin1, country].filter(Boolean).join(', ');
   const calculatedBaseTemp = Math.round(32 - Math.abs(latNum) * 0.45);
-  const heatDemand = calculatedBaseTemp > 25 ? calculatedBaseTemp - 25 : 0;
+  const currentTemperature = Number.isFinite(weather?.temperatureC) ? weather.temperatureC : calculatedBaseTemp;
+  const heatDemand = currentTemperature > 25 ? currentTemperature - 25 : 0;
   const denseUrbanSignal = Math.abs(Math.round((latNum * 10) + (lonNum * 7))) % 70;
+  const windCleaningFactor = Math.min(18, Number(weather?.windSpeedKph || 0) * 0.35);
 
   return {
     id: `${displayName || 'Selected Location'}:${latNum.toFixed(4)},${lonNum.toFixed(4)}`,
@@ -48,20 +131,85 @@ const buildLocationProfile = ({ name, latitude, longitude, country = '', admin1 
     waterMultiplier: parseFloat((1 + heatDemand * 0.02 + Math.abs(latNum) * 0.002).toFixed(2)),
     solarMultiplier: parseFloat((1.55 - Math.min(Math.abs(latNum), 65) * 0.012).toFixed(2)),
     treeMultiplier: parseFloat((0.75 + ((Math.abs(lonNum) % 35) / 100)).toFixed(2)),
-    aqiOffset: Math.round(12 + denseUrbanSignal),
-    baseTemp: Math.max(-8, Math.min(45, calculatedBaseTemp))
+    aqiOffset: Math.max(4, Math.round(12 + denseUrbanSignal - windCleaningFactor)),
+    baseTemp: Math.max(-8, Math.min(45, currentTemperature)),
+    weather: {
+      temperatureC: Math.round(currentTemperature * 10) / 10,
+      humidityPct: Math.round(Number(weather?.humidityPct || 55)),
+      windSpeedKph: Math.round(Number(weather?.windSpeedKph || 0) * 10) / 10,
+      weatherCode: weather?.weatherCode ?? null,
+      source: weather?.source || 'estimated'
+    }
   };
 };
 
-let activeLocationProfile = buildLocationProfile({
+const getLocationWeather = async (latitude, longitude) => {
+  try {
+    const params = new URLSearchParams({
+      latitude: String(latitude),
+      longitude: String(longitude),
+      current: 'temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
+      wind_speed_unit: 'kmh'
+    });
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+    if (!response.ok) throw new Error('Weather service unavailable');
+    const { current } = await response.json();
+    if (!current || !Number.isFinite(current.temperature_2m)) throw new Error('Weather response incomplete');
+    return {
+      temperatureC: current.temperature_2m,
+      humidityPct: current.relative_humidity_2m,
+      windSpeedKph: current.wind_speed_10m,
+      weatherCode: current.weather_code,
+      source: 'open-meteo'
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
+const createLocationProfile = async (location) => {
+  const weather = await getLocationWeather(location.latitude, location.longitude);
+  return buildLocationProfile({ ...location, weather });
+};
+
+const defaultLocationProfile = buildLocationProfile({
   name: 'New Delhi',
   admin1: 'Delhi',
   country: 'India',
   latitude: 28.6139,
   longitude: 77.2090
 });
+
+let activeLocationProfile = defaultLocationProfile;
 let activeLocation = activeLocationProfile.id;
 let SECTORS = activeLocationProfile.sectors;
+
+const autoResolveLocationProfile = async () => {
+  try {
+    const response = await fetch('https://ipapi.co/json/');
+    if (!response.ok) {
+      throw new Error('IP lookup unavailable');
+    }
+
+    const data = await response.json();
+    if (data?.latitude && data?.longitude) {
+      return {
+        profile: await createLocationProfile({
+          name: data.city || data.region || data.country_name || 'Current Location',
+          latitude: data.latitude,
+          longitude: data.longitude,
+          country: data.country_name || '',
+          admin1: data.region || ''
+        }),
+        source: 'ip'
+      };
+    }
+  } catch (error) {
+    console.warn('Using default fallback location.', error);
+  }
+
+  return { profile: defaultLocationProfile, source: 'default' };
+};
 
 // Generate 180 days of historical daily records dynamically based on active city profile
 const generateDataset = () => {
@@ -74,53 +222,59 @@ const generateDataset = () => {
     const dateString = date.toISOString().split('T')[0];
     
     SECTORS.forEach((sector, idx) => {
+      const seedText = `${profile.id}:${dateString}:${idx}`;
+      let seed = [...seedText].reduce((value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
+      const random = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
       let baseEnergy, baseWater, baseCarbon, baseAQI, baseTree, baseWaste, baseSolar;
       
       switch (idx) {
         case 0: // Civic core
-          baseEnergy = (800 + Math.random() * 200) * profile.energyMultiplier;
-          baseWater = (1200 + Math.random() * 300) * profile.waterMultiplier;
-          baseCarbon = (450 + Math.random() * 100) * profile.energyMultiplier;
-          baseAQI = (70 + Math.random() * 30) + profile.aqiOffset;
+          baseEnergy = (800 + random() * 200) * profile.energyMultiplier;
+          baseWater = (1200 + random() * 300) * profile.waterMultiplier;
+          baseCarbon = (450 + random() * 100) * profile.energyMultiplier;
+          baseAQI = (70 + random() * 30) + profile.aqiOffset;
           baseTree = 25000 * profile.treeMultiplier;
-          baseWaste = 70 + Math.random() * 25;
-          baseSolar = (50 + Math.random() * 30) * profile.solarMultiplier;
+          baseWaste = 70 + random() * 25;
+          baseSolar = (50 + random() * 30) * profile.solarMultiplier;
           break;
         case 1: // Industrial belt
-          baseEnergy = (2500 + Math.random() * 800) * profile.energyMultiplier;
-          baseWater = (4000 + Math.random() * 1200) * profile.waterMultiplier;
-          baseCarbon = (1800 + Math.random() * 500) * profile.energyMultiplier;
-          baseAQI = (110 + Math.random() * 50) + profile.aqiOffset;
+          baseEnergy = (2500 + random() * 800) * profile.energyMultiplier;
+          baseWater = (4000 + random() * 1200) * profile.waterMultiplier;
+          baseCarbon = (1800 + random() * 500) * profile.energyMultiplier;
+          baseAQI = (110 + random() * 50) + profile.aqiOffset;
           baseTree = 10000 * profile.treeMultiplier;
-          baseWaste = 85 + Math.random() * 15;
-          baseSolar = (150 + Math.random() * 80) * profile.solarMultiplier;
+          baseWaste = 85 + random() * 15;
+          baseSolar = (150 + random() * 80) * profile.solarMultiplier;
           break;
         case 2: // Residential Res Hub
-          baseEnergy = (600 + Math.random() * 150) * profile.energyMultiplier;
-          baseWater = (1800 + Math.random() * 400) * profile.waterMultiplier;
-          baseCarbon = (300 + Math.random() * 80) * profile.energyMultiplier;
-          baseAQI = (35 + Math.random() * 20) + profile.aqiOffset;
+          baseEnergy = (600 + random() * 150) * profile.energyMultiplier;
+          baseWater = (1800 + random() * 400) * profile.waterMultiplier;
+          baseCarbon = (300 + random() * 80) * profile.energyMultiplier;
+          baseAQI = (35 + random() * 20) + profile.aqiOffset;
           baseTree = 60000 * profile.treeMultiplier;
-          baseWaste = 40 + Math.random() * 30;
-          baseSolar = (80 + Math.random() * 50) * profile.solarMultiplier;
+          baseWaste = 40 + random() * 30;
+          baseSolar = (80 + random() * 50) * profile.solarMultiplier;
           break;
         case 3: // Green reserve
-          baseEnergy = (50 + Math.random() * 15) * profile.energyMultiplier;
-          baseWater = (300 + Math.random() * 80) * profile.waterMultiplier;
-          baseCarbon = (-200 - Math.random() * 50) * profile.treeMultiplier;
-          baseAQI = (10 + Math.random() * 10) + (profile.aqiOffset * 0.15);
+          baseEnergy = (50 + random() * 15) * profile.energyMultiplier;
+          baseWater = (300 + random() * 80) * profile.waterMultiplier;
+          baseCarbon = (-200 - random() * 50) * profile.treeMultiplier;
+          baseAQI = (10 + random() * 10) + (profile.aqiOffset * 0.15);
           baseTree = 250000 * profile.treeMultiplier;
-          baseWaste = 15 + Math.random() * 15;
-          baseSolar = (20 + Math.random() * 10) * profile.solarMultiplier;
+          baseWaste = 15 + random() * 15;
+          baseSolar = (20 + random() * 10) * profile.solarMultiplier;
           break;
         case 4: // Innovation district
-          baseEnergy = (1800 + Math.random() * 400) * profile.energyMultiplier;
-          baseWater = (900 + Math.random() * 200) * profile.waterMultiplier;
-          baseCarbon = (700 + Math.random() * 150) * profile.energyMultiplier;
-          baseAQI = (45 + Math.random() * 20) + profile.aqiOffset;
+          baseEnergy = (1800 + random() * 400) * profile.energyMultiplier;
+          baseWater = (900 + random() * 200) * profile.waterMultiplier;
+          baseCarbon = (700 + random() * 150) * profile.energyMultiplier;
+          baseAQI = (45 + random() * 20) + profile.aqiOffset;
           baseTree = 45000 * profile.treeMultiplier;
-          baseWaste = 50 + Math.random() * 25;
-          baseSolar = (400 + Math.random() * 200) * profile.solarMultiplier;
+          baseWaste = 50 + random() * 25;
+          baseSolar = (400 + random() * 200) * profile.solarMultiplier;
           break;
       }
 
@@ -139,7 +293,7 @@ const generateDataset = () => {
       }
 
       // Temperature variation
-      const temperature = profile.baseTemp + Math.sin((date.getMonth() / 11) * Math.PI) * 10 + (Math.random() * 4 - 2);
+      const temperature = profile.baseTemp + Math.sin((date.getMonth() / 11) * Math.PI) * 10 + (random() * 4 - 2);
       if (temperature > 28) {
         baseEnergy *= 1.35;
         baseWater *= 1.15;
@@ -150,14 +304,14 @@ const generateDataset = () => {
         sector,
         electricity_kwh: Math.round(baseEnergy),
         water_liters: Math.round(baseWater),
-        water_leak_rate: idx === 1 && Math.random() > 0.85 ? Math.round(5 + Math.random() * 15) : (Math.random() > 0.95 ? Math.round(2 + Math.random() * 8) : 0),
+        water_leak_rate: idx === 1 && random() > 0.85 ? Math.round(5 + random() * 15) : (random() > 0.95 ? Math.round(2 + random() * 8) : 0),
         aqi: Math.round(Math.max(5, baseAQI)),
         tree_cover_sqm: Math.round(baseTree),
         waste_fill_pct: Math.min(100, Math.round(baseWaste)),
         carbon_kg: Math.round(baseCarbon),
         solar_kwh: Math.round(baseSolar),
         temperature_c: Math.round(temperature),
-        humidity_pct: Math.round(45 + Math.random() * 30)
+        humidity_pct: Math.round(profile.weather.humidityPct * 0.7 + (45 + random() * 30) * 0.3)
       });
     });
   }
@@ -166,6 +320,8 @@ const generateDataset = () => {
 
 // In-memory active database
 let environmentalData = generateDataset();
+let datasetUpdatedAt = new Date().toISOString();
+let datasetSource = 'Location-calibrated model using coordinates and current weather';
 
 // Initialize sector overrides dynamically based on active sectors
 const initializeSectorOverrides = () => {
@@ -373,6 +529,27 @@ app.get('/api/history', (req, res) => {
   res.json(aggregatedHistory.slice(-30));
 });
 
+// Transparent data feed for the dashboard: these are the exact latest rows
+// consumed by the KPI, map, analytics, simulation, and NLP layers.
+app.get('/api/dataset/active', (req, res) => {
+  const latestDate = environmentalData[environmentalData.length - 1]?.date;
+  const records = environmentalData.filter((record) => record.date === latestDate);
+  res.json({
+    source: datasetSource,
+    updatedAt: datasetUpdatedAt,
+    totalRecords: environmentalData.length,
+    latestDate,
+    location: {
+      name: activeLocationProfile.name,
+      latitude: activeLocationProfile.latitude,
+      longitude: activeLocationProfile.longitude,
+      weather: activeLocationProfile.weather
+    },
+    fields: ['sector', 'electricity_kwh', 'water_liters', 'water_leak_rate', 'aqi', 'tree_cover_sqm', 'waste_fill_pct', 'carbon_kg', 'solar_kwh', 'temperature_c', 'humidity_pct'],
+    records
+  });
+});
+
 // Linear Regression Prediction (ML-based forecasts)
 app.get('/api/forecast', (req, res) => {
   // Aggregate dataset daily
@@ -492,6 +669,18 @@ app.post('/api/simulate', (req, res) => {
   }
 
   res.json({
+    location: {
+      name: activeLocationProfile.name,
+      latitude: activeLocationProfile.latitude,
+      longitude: activeLocationProfile.longitude,
+      weather: activeLocationProfile.weather
+    },
+    baseline: {
+      energyKwh: Math.round(baseEnergy),
+      waterLiters: Math.round(baseWater),
+      carbonKg: Math.round(baseCarbon),
+      aqi: Math.round(baseAQI)
+    },
     metrics: {
       sustainabilityScore: simulatedScore,
       energyKwh: Math.round(simulatedEnergy),
@@ -631,6 +820,8 @@ app.post('/api/chat', async (req, res) => {
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       
       const systemContext = `You are EcoSphere AI, an advanced sustainability decision intelligence assistant.
+The active location is ${activeLocationProfile.name} (${activeLocationProfile.latitude.toFixed(4)}, ${activeLocationProfile.longitude.toFixed(4)}).
+Current local weather: ${activeLocationProfile.weather.temperatureC}°C, ${activeLocationProfile.weather.humidityPct}% humidity, ${activeLocationProfile.weather.windSpeedKph} km/h wind (source: ${activeLocationProfile.weather.source}).
 You are monitoring a smart city with the following active sector telemetry dataset:
 ${JSON.stringify(latestRecords, null, 2)}
 
@@ -779,6 +970,8 @@ app.post('/api/upload', (req, res) => {
   uniqueSectors.forEach(sec => {
     sectorOverrides[sec] = { extraTrees: 0, leakFixed: false, solarAdded: 0 };
   });
+  datasetUpdatedAt = new Date().toISOString();
+  datasetSource = 'User-uploaded dataset';
 
   res.json({
     success: true,
@@ -793,6 +986,8 @@ const applyLocationProfile = (profile) => {
   SECTORS = profile.sectors;
   environmentalData = generateDataset();
   sectorOverrides = initializeSectorOverrides();
+  datasetUpdatedAt = new Date().toISOString();
+  datasetSource = `Location-calibrated model for ${profile.name} using ${profile.weather.source} weather`;
 };
 
 const normalizeGeocodeResult = (result) => ({
@@ -816,9 +1011,29 @@ app.get('/api/location', (req, res) => {
       latitude: activeLocationProfile.latitude,
       longitude: activeLocationProfile.longitude,
       country: activeLocationProfile.country,
-      admin1: activeLocationProfile.admin1
+      admin1: activeLocationProfile.admin1,
+      weather: activeLocationProfile.weather
     },
     availableLocations: []
+  });
+});
+
+app.get('/api/location/auto', async (req, res) => {
+  const { profile, source } = await autoResolveLocationProfile();
+  applyLocationProfile(profile);
+  res.json({
+    success: true,
+    source,
+    activeLocationName: profile.name,
+    location: {
+      id: profile.id,
+      name: profile.name,
+      latitude: profile.latitude,
+      longitude: profile.longitude,
+      country: profile.country,
+      admin1: profile.admin1,
+      weather: profile.weather
+    }
   });
 });
 
@@ -852,7 +1067,7 @@ app.get('/api/location/search', async (req, res) => {
   }
 });
 
-app.post('/api/location', (req, res) => {
+app.post('/api/location', async (req, res) => {
   const { name, latitude, longitude, country, admin1 } = req.body;
   const latNum = Number(latitude);
   const lonNum = Number(longitude);
@@ -864,7 +1079,7 @@ app.post('/api/location', (req, res) => {
     return res.status(400).json({ error: 'A valid location name is required.' });
   }
 
-  const profile = buildLocationProfile({
+  const profile = await createLocationProfile({
     name: String(name).trim(),
     latitude: latNum,
     longitude: lonNum,
@@ -883,7 +1098,8 @@ app.post('/api/location', (req, res) => {
       latitude: profile.latitude,
       longitude: profile.longitude,
       country: profile.country,
-      admin1: profile.admin1
+      admin1: profile.admin1,
+      weather: profile.weather
     }
   });
 });
@@ -931,7 +1147,7 @@ app.post('/api/location/gps', async (req, res) => {
     // Reverse lookup is helpful but GPS calibration still works without it.
   }
 
-  const profile = buildLocationProfile({ name, latitude: latNum, longitude: lonNum, country, admin1 });
+  const profile = await createLocationProfile({ name, latitude: latNum, longitude: lonNum, country, admin1 });
   applyLocationProfile(profile);
 
   return res.json({
@@ -944,10 +1160,153 @@ app.post('/api/location/gps', async (req, res) => {
       latitude: profile.latitude,
       longitude: profile.longitude,
       country: profile.country,
-      admin1: profile.admin1
+      admin1: profile.admin1,
+      weather: profile.weather
     }
   });
 
+});
+
+// ----------------------------------------------------
+// Enterprise-grade mock APIs for the new experience
+// ----------------------------------------------------
+app.get('/api/enterprise/overview', (req, res) => {
+  res.json({
+    executive: {
+      sustainabilityIndex: 89,
+      complianceScore: 92,
+      finesCollected: 1480000,
+      inspectionsScheduled: 41,
+      aiConfidence: 97
+    },
+    twin: {
+      buildings: 184,
+      roads: 312,
+      trees: 9520,
+      pollution: 34,
+      leaks: 3,
+      solar: 31,
+      waste: 5,
+      grid: 95
+    },
+    whatIf: {
+      treeImpact: { aqi: 41, carbon: 2810, temperature: 29.4 },
+      solarImpact: { savings: 418, carbon: 2720, cost: 162000 },
+      rainfallImpact: { shortage: '12%', groundwater: '7% below baseline' }
+    }
+  });
+});
+
+app.get('/api/enterprise/compliance', (req, res) => {
+  res.json({
+    totalViolations: 47,
+    pendingCases: 19,
+    resolvedCases: 28,
+    repeatOffenders: 7,
+    fines: 1480000,
+    heatmap: [
+      { label: 'North', value: 68 },
+      { label: 'Central', value: 61 },
+      { label: 'East', value: 90 },
+      { label: 'South', value: 66 },
+      { label: 'West', value: 74 }
+    ]
+  });
+});
+
+app.get('/api/enterprise/leaderboard', (req, res) => {
+  res.json([
+    { name: 'Jaipur', sustainability: 91, water: 86, carbon: 89, energy: 90, trees: 87, type: 'City' },
+    { name: 'Delhi', sustainability: 87, water: 82, carbon: 84, energy: 83, trees: 81, type: 'City' },
+    { name: 'Sector 14', sustainability: 84, water: 80, carbon: 82, energy: 79, trees: 85, type: 'Society' },
+    { name: 'Greenfield School', sustainability: 82, water: 78, carbon: 80, energy: 77, trees: 83, type: 'School' },
+    { name: 'AquaTech', sustainability: 80, water: 76, carbon: 78, energy: 75, trees: 79, type: 'Business' }
+  ]);
+});
+
+app.get('/api/enterprise/coach', (req, res) => {
+  res.json([
+    { citizen: 'Mira', ecoScore: 92, weeklyTrend: '+12%', carbonFootprint: '3.4 t', badge: 'Water Guardian', recommendation: 'Shift laundry to off-peak hours.' },
+    { citizen: 'Arjun', ecoScore: 86, weeklyTrend: '+8%', carbonFootprint: '4.1 t', badge: 'Solar Starter', recommendation: 'Use rooftop solar surplus in the evening.' },
+    { citizen: 'Neha', ecoScore: 79, weeklyTrend: '+5%', carbonFootprint: '4.9 t', badge: 'Compost Champion', recommendation: 'Install a home composting unit.' }
+  ]);
+});
+
+app.get('/api/enterprise/sdg', (req, res) => {
+  res.json([
+    { goal: 'SDG 6', progress: 84, label: 'Clean Water' },
+    { goal: 'SDG 7', progress: 88, label: 'Affordable Energy' },
+    { goal: 'SDG 11', progress: 81, label: 'Sustainable Cities' },
+    { goal: 'SDG 13', progress: 90, label: 'Climate Action' },
+    { goal: 'SDG 15', progress: 86, label: 'Life on Land' }
+  ]);
+});
+
+app.get('/api/enterprise/agent', (req, res) => {
+  res.json([
+    { id: 'T-204', task: 'Schedule leakage inspection', owner: 'Officer Kavita', status: 'Scheduled', priority: 'High' },
+    { id: 'T-205', task: 'Notify waste collectors', owner: 'Ops Desk', status: 'In progress', priority: 'Medium' },
+    { id: 'T-206', task: 'Issue solar maintenance ticket', owner: 'Field Team', status: 'Queued', priority: 'Low' }
+  ]);
+});
+
+app.post('/api/enterprise/whatif', (req, res) => {
+  const { treeIncrease = 20, solarIncrease = 30, rainfallDrop = 18 } = req.body || {};
+  res.json({
+    treeImpact: {
+      aqi: Math.max(25, 48 - treeIncrease * 0.2),
+      carbon: Math.max(2200, 3000 - treeIncrease * 12),
+      temperature: parseFloat((31 - treeIncrease * 0.05).toFixed(1))
+    },
+    solarImpact: {
+      savings: Math.round(300 + solarIncrease * 4),
+      carbon: Math.max(2500, 3200 - solarIncrease * 8),
+      cost: Math.round(140000 + solarIncrease * 900)
+    },
+    rainfallImpact: {
+      shortage: `${Math.max(5, rainfallDrop)}%`,
+      groundwater: `${Math.max(3, Math.round(rainfallDrop * 0.35))}% below baseline`
+    }
+  });
+});
+
+app.get('/api/datasets', (req, res) => {
+  const rows = db.prepare('SELECT dataset_name, record_count, summary FROM dataset_catalog ORDER BY dataset_name').all();
+  const datasets = rows.map((row) => ({
+    name: row.dataset_name.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    file: `${row.dataset_name}.json`,
+    records: row.record_count,
+    summary: row.summary,
+    preview: loadDatasetPreview(row.dataset_name)
+  }));
+
+  res.json({
+    datasets,
+    status: 'ready',
+    generatedAt: new Date().toISOString(),
+    notes: 'Synthetic demo datasets are available for electricity, water, air, trees, waste, renewables, carbon, and citizen reports.'
+  });
+});
+
+app.post('/api/report/export', (req, res) => {
+  const { reportType = 'esg', kpis = {} } = req.body || {};
+  const title = `${reportType.toUpperCase()} sustainability report`;
+  const content = buildReportContent(reportType, kpis);
+  const insert = db.prepare('INSERT INTO report_exports (report_type, title, content) VALUES (?, ?, ?)');
+  const result = insert.run(reportType, title, content);
+
+  res.json({
+    success: true,
+    id: result.lastInsertRowid,
+    title,
+    content,
+    createdAt: new Date().toISOString()
+  });
+});
+
+app.get('/api/report/history', (req, res) => {
+  const rows = db.prepare('SELECT id, report_type, title, created_at FROM report_exports ORDER BY id DESC LIMIT 8').all();
+  res.json({ history: rows });
 });
 
 // Health check endpoint for deployment platforms like Render

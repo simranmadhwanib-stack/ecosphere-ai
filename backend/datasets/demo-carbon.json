@@ -1,0 +1,1 @@
+[{"sector":"Industry","emission":1820,"source":"coal","reduction_target":32},{"sector":"Transport","emission":1240,"source":"diesel","reduction_target":24},{"sector":"Buildings","emission":960,"source":"electricity","reduction_target":18},{"sector":"Agriculture","emission":780,"source":"fertilizer","reduction_target":15}]

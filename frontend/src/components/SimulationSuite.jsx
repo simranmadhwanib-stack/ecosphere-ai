@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sliders, HelpCircle, Activity, Zap, Droplet, Wind, Flame, TrendingDown, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-export default function SimulationSuite({ apiBase, activeLocationName }) {
+export default function SimulationSuite({ apiBase, activeLocationName, activeLocation }) {
   // Simulator parameter states
   const [params, setParams] = useState({
     renewablePct: 20,
@@ -54,6 +54,11 @@ export default function SimulationSuite({ apiBase, activeLocationName }) {
           <p className="text-xs text-slate-400 mt-1">
             Adjust global civic attributes to simulate energy grid load shifts, AQI atmospheric particulate levels, and carbon footprint trends over 12 months.
           </p>
+          <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-lg border border-eco-500/30 bg-eco-500/10 px-3 py-2 text-xs text-eco-200">
+            <span className="font-bold">Selected model location:</span>
+            <span>{simResults?.location?.name || activeLocationName}</span>
+            {activeLocation?.weather && <span className="text-cyan-200">• {activeLocation.weather.temperatureC}°C • {activeLocation.weather.humidityPct}% humidity</span>}
+          </div>
         </div>
         <div className="bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-mono">
           <Activity className="w-4 h-4 animate-pulse" /> SIMULATION ENGINE ACTIVE
@@ -176,23 +181,28 @@ export default function SimulationSuite({ apiBase, activeLocationName }) {
                 <div className="bg-slate-950/40 p-4 rounded-xl border border-white/5 relative">
                   <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Simulated Index</span>
                   <p className="text-2xl font-extrabold text-eco-400 mt-1">{simResults.metrics.sustainabilityScore}%</p>
-                  <span className="text-[9px] text-slate-500">Global Score</span>
+                  <span className="text-[9px] text-slate-500">Selected location score</span>
                 </div>
                 <div className="bg-slate-950/40 p-4 rounded-xl border border-white/5">
                   <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Energy Load</span>
                   <p className="text-2xl font-extrabold text-blue-400 mt-1">{simResults.metrics.energyKwh?.toLocaleString()} kWh</p>
-                  <span className="text-[9px] text-slate-500">Peak Demand Draw</span>
+                  <span className="text-[9px] text-slate-500">Baseline: {simResults.baseline?.energyKwh?.toLocaleString()} kWh</span>
                 </div>
                 <div className="bg-slate-950/40 p-4 rounded-xl border border-white/5">
                   <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Carbon Footprint</span>
                   <p className="text-2xl font-extrabold text-orange-400 mt-1">{simResults.metrics.carbonKg?.toLocaleString()} kg</p>
-                  <span className="text-[9px] text-slate-500">Daily GHG Output</span>
+                  <span className="text-[9px] text-slate-500">Baseline: {simResults.baseline?.carbonKg?.toLocaleString()} kg</span>
                 </div>
                 <div className="bg-slate-950/40 p-4 rounded-xl border border-white/5">
                   <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Average AQI</span>
                   <p className={`text-2xl font-extrabold mt-1 ${simResults.metrics.aqi > 100 ? 'text-red-500' : 'text-cyan-400'}`}>{simResults.metrics.aqi}</p>
-                  <span className="text-[9px] text-slate-500">Air Pollutant Level</span>
+                  <span className="text-[9px] text-slate-500">Baseline: {simResults.baseline?.aqi}</span>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-white/5 bg-slate-950/40 p-3 text-xs">
+                <div><span className="text-slate-500">Water demand</span><p className="mt-1 font-bold text-cyan-300">{simResults.metrics.waterLiters?.toLocaleString()} L <span className="font-normal text-slate-500">(baseline {simResults.baseline?.waterLiters?.toLocaleString()} L)</span></p></div>
+                <div><span className="text-slate-500">Scenario input</span><p className="mt-1 text-slate-300">Renewables {params.renewablePct}% · Canopy {params.treeCoverPct}% · EVs {params.evAdoptionPct}% · Heat +{params.tempRise}°C</p></div>
               </div>
 
               {/* Projections Chart */}

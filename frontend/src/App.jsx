@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Globe, LayoutDashboard, MessageSquare, Sliders, Cpu,
-  Trophy, FileText, Award, Star, RefreshCw, MapPin, Search, Navigation, Loader2
+  Trophy, FileText, Award, Star, RefreshCw, MapPin, Search, Navigation, Loader2, ShieldCheck, Radar, Database
 } from 'lucide-react';
 
 import Overview from './components/Overview';
@@ -11,6 +11,9 @@ import RapidsBenchmark from './components/RapidsBenchmark';
 import EcoGamification from './components/EcoGamification';
 import AnalyticsModules from './components/AnalyticsModules';
 import ReportGenerator from './components/ReportGenerator';
+import EnterpriseOS from './components/EnterpriseOS';
+import MapExperience from './components/MapExperience';
+import ActiveDataset from './components/ActiveDataset';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? `http://${window.location.hostname}:5000/api` : '/api');
 
@@ -43,6 +46,8 @@ export default function App() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [locationNotice, setLocationNotice] = useState('');
+  const [datasetCatalog, setDatasetCatalog] = useState([]);
   const autoLocationRequestedRef = useRef(false);
 
   const fetchGlobalState = async () => {
@@ -76,6 +81,18 @@ export default function App() {
     }
   };
 
+  const fetchDatasets = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/datasets`);
+      if (res.ok) {
+        const data = await res.json();
+        setDatasetCatalog(data.datasets || []);
+      }
+    } catch (e) {
+      console.warn('Dataset catalog unavailable', e);
+    }
+  };
+
   const celebrateLocationChange = () => {
     if (window.confetti) {
       window.confetti({
@@ -93,14 +110,15 @@ export default function App() {
     celebrateLocationChange();
   };
 
-  const submitDetectedLocation = async (latitude, longitude) => {
+  const submitDetectedLocation = async (latitude, longitude, cityName = '') => {
     setLocationLoading(true);
     setLocationError('');
+    setLocationNotice('');
     try {
       const res = await fetch(`${API_BASE}/location/gps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude, longitude })
+        body: JSON.stringify({ latitude, longitude, cityName })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -110,6 +128,7 @@ export default function App() {
       setLocationResults([]);
       setLocationQuery('');
       await refreshAfterLocationChange();
+      setLocationNotice('Location updated using your device coordinates.');
     } catch (e) {
       setLocationError(`Connection failed: ${e.message}`);
     } finally {
@@ -117,26 +136,87 @@ export default function App() {
     }
   };
 
-  const requestBrowserLocation = (fromAutoDetect = false) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      if (!fromAutoDetect) {
-        setLocationError('Geolocation is not supported by this browser. Search for your city manually.');
+  const tryBackendLocationFallback = async (fromAutoDetect = false) => {
+    try {
+      const res = await fetch(`${API_BASE}/location/auto`);
+      if (!res.ok) {
+        throw new Error('Auto location lookup failed');
+      }
+      const data = await res.json();
+      if (data?.location) {
+        setActiveLocationName(data.activeLocationName || data.location.name);
+        setActiveLocation(data.location);
+        setLocationError('');
+        setLocationNotice(
+          data.source === 'ip'
+            ? 'Using an approximate network location. For precise results, allow browser location access.'
+            : 'Using the default location. Search for your city or enable browser location access for a more accurate result.'
+        );
+        return true;
+      }
+    } catch (e) {
+      console.warn('Backend auto location unavailable', e);
+    }
+
+    if (!fromAutoDetect) {
+      setLocationError('Location could not be resolved automatically. Search for your city manually.');
+    }
+    return false;
+  };
+
+  const getLocationErrorMessage = (error) => {
+    if (error?.code === 1) {
+      return 'Location permission was denied. Allow location access for this site in your browser, then try again.';
+    }
+    if (error?.code === 2) {
+      return 'Your device could not determine a location. Turn on system location services and check your network connection.';
+    }
+    if (error?.code === 3) {
+      return 'Location detection timed out. Move to an area with better GPS or network coverage and try again.';
+    }
+    return error?.message || 'Your browser could not determine a location.';
+  };
+
+  const requestBrowserLocation = async (fromAutoDetect = false) => {
+    setLocationError('');
+    setLocationNotice('');
+    setDetectingLocation(true);
+
+    // Browser geolocation is only available on HTTPS pages (localhost is the
+    // development exception). This is common when Vite is opened via a LAN IP.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setDetectingLocation(false);
+      const fallbackSucceeded = await tryBackendLocationFallback(fromAutoDetect);
+      if (!fallbackSucceeded && !fromAutoDetect) {
+        setLocationError('Location access requires HTTPS. Open the app at http://localhost:5173 on this computer, or serve it over HTTPS.');
       }
       return;
     }
 
-    setLocationError('');
-    setDetectingLocation(true);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      const fallbackSucceeded = await tryBackendLocationFallback(fromAutoDetect);
+      if (!fallbackSucceeded && !fromAutoDetect) {
+        setLocationError('Geolocation is not supported by this browser. Search for your city manually.');
+      }
+      setDetectingLocation(false);
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         await submitDetectedLocation(position.coords.latitude, position.coords.longitude);
         setDetectingLocation(false);
       },
-      (error) => {
-        setLocationError(`${error.message}. You can still search for a location manually.`);
+      async (error) => {
         setDetectingLocation(false);
+        const fallbackSucceeded = await tryBackendLocationFallback(fromAutoDetect);
+        if (!fallbackSucceeded) {
+          setLocationError(`${getLocationErrorMessage(error)} Search for your city manually if the issue continues.`);
+          setActiveLocationName('New Delhi, Delhi, India');
+          setActiveLocation({ name: 'New Delhi', latitude: 28.6139, longitude: 77.2090, country: 'India', admin1: 'Delhi' });
+        }
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
     );
   };
 
@@ -154,6 +234,7 @@ export default function App() {
 
     setLocationLoading(true);
     setLocationError('');
+    setLocationNotice('');
     setLocationResults([]);
     try {
       const res = await fetch(`${API_BASE}/location/search?query=${encodeURIComponent(query)}`);
@@ -173,6 +254,7 @@ export default function App() {
   const selectLocation = async (location) => {
     setLocationLoading(true);
     setLocationError('');
+    setLocationNotice('');
     try {
       const res = await fetch(`${API_BASE}/location`, {
         method: 'POST',
@@ -187,6 +269,7 @@ export default function App() {
       setLocationResults([]);
       setLocationQuery(location.displayName || location.name);
       await refreshAfterLocationChange();
+      setLocationNotice('Location updated from your search selection.');
     } catch (e) {
       setLocationError(`Failed to change location: ${e.message}`);
     } finally {
@@ -197,6 +280,7 @@ export default function App() {
   useEffect(() => {
     fetchGlobalState();
     fetchLocationInfo();
+    fetchDatasets();
 
     if (!autoLocationRequestedRef.current) {
       autoLocationRequestedRef.current = true;
@@ -211,6 +295,9 @@ export default function App() {
     { id: 'overview', label: 'Dashboard Control', icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'assistant', label: 'Gemini Assistant', icon: <MessageSquare className="w-4 h-4" /> },
     { id: 'analytics', label: 'Resource Modules', icon: <Globe className="w-4 h-4" /> },
+    { id: 'data', label: 'Active Dataset', icon: <Database className="w-4 h-4" /> },
+    { id: 'enterprise', label: 'Enterprise OS', icon: <ShieldCheck className="w-4 h-4" /> },
+    { id: 'map', label: 'Advanced Map', icon: <Radar className="w-4 h-4" /> },
     { id: 'simulator', label: 'Scenario Simulator', icon: <Sliders className="w-4 h-4" /> },
     { id: 'rapids', label: 'NVIDIA RAPIDS', icon: <Cpu className="w-4 h-4" /> },
     { id: 'gamification', label: 'Eco Rewards', icon: <Trophy className="w-4 h-4" /> },
@@ -284,9 +371,14 @@ export default function App() {
                 <span className="text-eco-400 font-bold">{activeLocationName}</span>
               </p>
               {activeLocation && (
-                <p className="text-[10px] text-slate-500 font-mono mt-1">
-                  {Number(activeLocation.latitude).toFixed(4)}, {Number(activeLocation.longitude).toFixed(4)}
-                </p>
+                <div className="text-[10px] text-slate-500 font-mono mt-1 space-y-0.5">
+                  <p>{Number(activeLocation.latitude).toFixed(4)}, {Number(activeLocation.longitude).toFixed(4)}</p>
+                  {activeLocation.weather && (
+                    <p className="text-cyan-300">
+                      Live weather: {activeLocation.weather.temperatureC}°C · {activeLocation.weather.humidityPct}% humidity · {activeLocation.weather.windSpeedKph} km/h wind
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -341,6 +433,11 @@ export default function App() {
                 {locationError}
               </div>
             )}
+            {locationNotice && (
+              <div className="text-[11px] bg-cyan-500/10 border border-cyan-500/20 text-cyan-200 rounded-lg px-3 py-2">
+                {locationNotice}
+              </div>
+            )}
 
             {locationResults.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -360,6 +457,41 @@ export default function App() {
               </div>
             )}
           </section>
+
+          <section className="bg-slate-900/60 border border-white/5 rounded-xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <Database className="w-4 h-4 text-cyan-400" /> Live Dataset Catalog
+                </h3>
+                <p className="text-[11px] text-slate-400">Synthetic demo datasets are loaded and visible to the operating system.</p>
+              </div>
+              <span className="text-[10px] font-mono text-cyan-300">{datasetCatalog.length} datasets ready</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+              {datasetCatalog.slice(0, 8).map((dataset) => (
+                <div key={dataset.file} className="rounded-lg border border-white/5 bg-slate-950/50 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-white">{dataset.name}</span>
+                    <span className="text-[10px] text-cyan-300 font-mono">{dataset.records?.toLocaleString()} rows</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">{dataset.summary}</p>
+                  {dataset.preview?.length > 0 ? (
+                    <ul className="space-y-1 text-[10px] text-slate-500">
+                      {dataset.preview.slice(0, 2).map((row, index) => (
+                        <li key={`${dataset.file}-${index}`} className="truncate">
+                          • {Object.entries(row).slice(0, 2).map(([key, value]) => `${key}: ${value}`).join(' • ')}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[10px] text-slate-500">Preview samples are prepared for this dataset.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         </header>
 
         <div className="transition-all duration-300">
@@ -374,8 +506,11 @@ export default function App() {
             />
           )}
           {activeTab === 'assistant' && <GeminiAssistant apiBase={API_BASE} />}
-          {activeTab === 'analytics' && <AnalyticsModules apiBase={API_BASE} />}
-          {activeTab === 'simulator' && <SimulationSuite apiBase={API_BASE} activeLocationName={activeLocationName} />}
+          {activeTab === 'analytics' && <AnalyticsModules apiBase={API_BASE} activeLocationName={activeLocationName} />}
+          {activeTab === 'data' && <ActiveDataset apiBase={API_BASE} activeLocationName={activeLocationName} />}
+          {activeTab === 'enterprise' && <EnterpriseOS apiBase={API_BASE} />}
+          {activeTab === 'map' && <MapExperience apiBase={API_BASE} activeLocationName={activeLocationName} />}
+          {activeTab === 'simulator' && <SimulationSuite apiBase={API_BASE} activeLocationName={activeLocationName} activeLocation={activeLocation} />}
           {activeTab === 'rapids' && <RapidsBenchmark apiBase={API_BASE} />}
           {activeTab === 'gamification' && (
             <EcoGamification apiBase={API_BASE} kpis={kpis} fetchGlobalState={fetchGlobalState} />

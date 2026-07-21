@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Download, Printer, RefreshCw, CheckCircle, HelpCircle, Activity } from 'lucide-react';
 
 export default function ReportGenerator({ apiBase, kpis, fetchGlobalState }) {
@@ -9,6 +9,7 @@ export default function ReportGenerator({ apiBase, kpis, fetchGlobalState }) {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadFeedback, setUploadFeedback] = useState('');
   const [fileInfo, setFileInfo] = useState('');
+  const [history, setHistory] = useState([]);
 
   // JavaScript client-side CSV parser
   const parseCSV = (text) => {
@@ -89,79 +90,45 @@ export default function ReportGenerator({ apiBase, kpis, fetchGlobalState }) {
     reader.readAsText(file);
   };
 
-  const generateReport = () => {
+  const refreshHistory = async () => {
+    try {
+      const res = await fetch(`${apiBase}/report/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data.history || []);
+      }
+    } catch (error) {
+      console.warn('Report history unavailable', error);
+    }
+  };
+
+  useEffect(() => {
+    refreshHistory();
+  }, [apiBase]);
+
+  const generateReport = async () => {
     setCompiling(true);
     setCompiledReport(null);
 
-    // Simulate compilation delay for analytical lookups
-    setTimeout(() => {
-      let reportContent = '';
-      const dateStr = new Date().toLocaleDateString();
+    try {
+      const res = await fetch(`${apiBase}/report/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportType, kpis })
+      });
 
-      if (reportType === 'esg') {
-        reportContent = `# 🌍 EcoSphere AI - Municipal ESG Audit
-**Compliance Registry:** UN-SDG-11-13 | **Security Certificate:** SHA-256 Ledger Verified
-**Report Date:** ${dateStr} | **Global Assessment:** CLASS-A ECO BALANCE
-
----
-
-## 1. Executive ESG Summary
-EcoSphere City's integrated municipal smart systems report a **Sustainability Index of ${kpis.sustainabilityScore}%**. Atmospheric particulates (AQI) average **${kpis.averageAQI}**, maintaining stable air quality conditions. Greenhouse gas emissions have been minimized via microgrids and urban tree covers.
-
-## 2. Key Metrics & Targets
-*   **Net Carbon Footprint:** ${kpis.totalCarbonKg?.toLocaleString()} kg CO2/day
-*   **Annualized Carbon Offset:** ${kpis.carbonOffsetKg?.toLocaleString()} kg CO2
-*   **Rooftop Solar Absorption:** ${kpis.solarGenerationKwh} kWh
-*   **Water Distribution Efficiency:** ${kpis.activeAlerts > 0 ? '94.2%' : '100%'}
-
-## 3. Recommended Policy Interventions
-1.  **Urban Forestry Expansion:** Expand the highest-AQI zone tree canopy by 20,000 sqm to absorb sulfur-particulate outputs.
-2.  **Solar Grid Subsidization:** Deploy photovoltaic incentives for residential rooftops to target a 20% solar mix ratio.
-3.  **Pressure Loop Repairs:** Seal local flow pressure deviations to protect drinking water reserves.
-`;
-      } else if (reportType === 'energy') {
-        reportContent = `# ⚡ EcoSphere AI - Smart Grid Energy Report
-**Grid Compliance:** IEEE-SmartGrid-v2 | **Telemetry Hops:** 5 IoT Segments
-**Report Date:** ${dateStr} | **Grid Status:** STABLE SUPPLY
-
----
-
-## 1. Smart Grid Assessment
-Total municipal energy demand stands at **${kpis.totalEnergyUsageKwh?.toLocaleString()} kWh**. Solar installations currently generate **${kpis.solarGenerationKwh} kWh**, accounting for **${Math.round((kpis.solarGenerationKwh / kpis.totalEnergyUsageKwh) * 100) || 10}%** of grid inputs.
-
-## 2. Grid Peak Demand Factors
-*   **Industrial Sector:** Absorbs 65.2% of peak grid loads.
-*   **Datacenter Corridor:** High-density baseline draw registered.
-*   **Ambient Weather Correlates:** Air conditioning loads increase by 4.2% per 1°C ambient temperature rise above 28°C.
-
-## 3. Operational Priorities
-1.  Extend peak shifters to high-demand local zones.
-2.  Incorporate wind energy feed-ins.
-`;
+      if (res.ok) {
+        const data = await res.json();
+        setCompiledReport(data.content);
+        await refreshHistory();
       } else {
-        reportContent = `# 🌳 EcoSphere AI - Carbon Footprint Audit
-**Greenhouse Ledger:** GHG-Protocol-Scope-2 | **Audit Status:** APPROVED
-**Report Date:** ${dateStr} | **Net Daily Offset:** -${kpis.carbonOffsetKg} kg
-
----
-
-## 1. Greenhouse Gas Ingestion
-EcoSphere City carbon emissions total **${kpis.totalCarbonKg?.toLocaleString()} kg CO2**. This is offset by **${kpis.carbonOffsetKg?.toLocaleString()} kg** of offset vectors, primarily driven by **${(kpis.totalTreeCoverSqm / 10000).toFixed(1)} hectares** of urban forestation.
-
-## 2. Carbon Vectors
-*   **Industrial Emissions:** 68% of emissions.
-*   **Vehicle Transportation:** 22% of emissions.
-*   **Carbon Sinks (Parks):** Absorb 220g CO2 per square meter annually.
-
-## 3. Decarbonization Action Plan
-1.  Transition city fleet logistics to Electric Vehicles.
-2.  Expand green reserve borders to absorb highway exhaust plumes.
-`;
+        throw new Error('Unable to export report');
       }
-
-      setCompiledReport(reportContent);
+    } catch (error) {
+      setCompiledReport(`# ⚠️ Export Error\nThe report service could not be reached.\n\nPlease retry in a moment.`);
+    } finally {
       setCompiling(false);
-    }, 1200);
+    }
   };
 
   const handlePrint = () => {
@@ -320,6 +287,25 @@ EcoSphere City carbon emissions total **${kpis.totalCarbonKg?.toLocaleString()} 
           )}
         </div>
 
+      </div>
+
+      <div className="glass-panel p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-white">Recent export history</h3>
+            <p className="mt-1 text-sm text-slate-400">Decision-ready reports stored in the local database for audit and investor demos.</p>
+          </div>
+          <button onClick={refreshHistory} className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-300">Refresh</button>
+        </div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {history.length > 0 ? history.map((item) => (
+            <div key={item.id} className="rounded-2xl border border-white/5 bg-slate-950/70 p-3 text-sm">
+              <div className="font-semibold text-white">{item.title}</div>
+              <div className="mt-1 text-xs text-slate-500">{item.report_type.toUpperCase()}</div>
+              <div className="mt-2 text-[11px] text-slate-400">{new Date(item.created_at).toLocaleString()}</div>
+            </div>
+          )) : <div className="text-sm text-slate-500">No report exports have been generated yet.</div>}
+        </div>
       </div>
     </div>
   );
